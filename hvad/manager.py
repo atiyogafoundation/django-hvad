@@ -72,7 +72,7 @@ if django.VERSION >= (1, 9):
 
     class TranslatableModelIterable(ModelIterable):
         def __iter__(self):
-            qs = self.queryset.__clone()._add_language_filter()
+            qs = self.queryset._clone()._add_language_filter()
             qs._iterable_class = ModelIterable
             qs._known_related_objects = {}
             if qs._forced_unique_fields:
@@ -109,20 +109,20 @@ if django.VERSION >= (1, 9):
 
     class TranslatedValuesIterable(ValuesIterable):
         def __iter__(self):
-            qs = self.queryset.__clone()._add_language_filter()
+            qs = self.queryset._clone()._add_language_filter()
             qs._iterable_class = ValuesIterable
             for row in qs.iterator():
                 yield qs._reverse_translate_fieldnames_dict(row)
 
     class TranslatedValuesListIterable(ValuesListIterable):
         def __iter__(self):
-            qs = self.queryset.__clone()._add_language_filter()
+            qs = self.queryset._clone()._add_language_filter()
             qs._iterable_class = ValuesListIterable
             return qs.iterator()
 
     class TranslatedFlatValuesListIterable(FlatValuesListIterable):
         def __iter__(self):
-            qs = self.queryset.__clone()._add_language_filter()
+            qs = self.queryset._clone()._add_language_filter()
             qs._iterable_class = FlatValuesListIterable
             return qs.iterator()
 else:
@@ -130,7 +130,7 @@ else:
         _skip_master_select = True
 
         def iterator(self):
-            qs = self.__clone()._add_language_filter()
+            qs = self._clone()._add_language_filter()
             for row in super(ValuesMixin, qs).iterator():
                 if isinstance(row, dict):
                     yield qs._reverse_translate_fieldnames_dict(row)
@@ -225,7 +225,8 @@ class TranslationQueryset(QuerySet):
                 model, self.shared_model = model._meta.translations_model, model
             elif not hasattr(model._meta, 'shared_model'):
                 raise TypeError('TranslationQueryset only works on translatable models')
-
+            else:
+                self.shared_model = model._meta.shared_model
         self._local_field_names = None
         self._field_translator = None
         self._language_code = None
@@ -242,7 +243,7 @@ class TranslationQueryset(QuerySet):
     # Helpers and properties (INTERNAL!)
     #===========================================================================
 
-    def __clone(self, klass=None, setup=False, **kwargs):
+    def _clone(self, klass=None, setup=False, **kwargs):
         """ Creates a clone of this queryset - Django equivalent of copy()
         This method keeps all defining attributes and drops data caches
         """
@@ -262,7 +263,7 @@ class TranslationQueryset(QuerySet):
                 'klass': None if klass is None else self._get_class(klass),
                 'setup': setup,
             })
-        return super(TranslationQueryset, self).__clone(**kwargs)
+        return super(TranslationQueryset, self)._clone()
 
     @property
     def field_translator(self):
@@ -346,7 +347,7 @@ class TranslationQueryset(QuerySet):
             return klass
 
     def _get_shared_queryset(self):
-        qs = super(TranslationQueryset, self).__clone()
+        qs = super(TranslationQueryset, self)._clone()
         qs.__class__ = QuerySet
         accessor = self.shared_model._meta.translations_accessor
         # update using the real manager
@@ -511,7 +512,7 @@ class TranslationQueryset(QuerySet):
 
     if django.VERSION < (1, 9):
         def iterator(self):
-            qs = self.__clone()._add_language_filter()
+            qs = self._clone()._add_language_filter()
             qs._known_related_objects = {}  # super's iterator will attempt to set them
             if qs._forced_unique_fields:
                 with ForcedUniqueFields(qs._forced_unique_fields):
@@ -562,14 +563,14 @@ class TranslationQueryset(QuerySet):
 
     def count(self):
         if self._result_cache is None:
-            qs = self.__clone()._add_language_filter()
+            qs = self._clone()._add_language_filter()
             return super(TranslationQueryset, qs).count()
         else:
             return len(self._result_cache)
 
     def exists(self):
         if self._result_cache is None:
-            qs = self.__clone()._add_language_filter()
+            qs = self._clone()._add_language_filter()
             return super(TranslationQueryset, qs).exists()
         else:
             return bool(self._result_cache)
@@ -627,7 +628,7 @@ class TranslationQueryset(QuerySet):
         """
         Loops over all the passed aggregates and translates the fieldnames
         """
-        qs = self.__clone()._add_language_filter()
+        qs = self._clone()._add_language_filter()
         newargs = tuple(qs._translate_expression(item) for item in args)
         newkwargs = dict(
             (k, qs._translate_expression(v)) for k, v in kwargs.items()
@@ -659,7 +660,7 @@ class TranslationQueryset(QuerySet):
     delete.queryset_only = True
 
     def delete_translations(self):
-        qs = self.__clone()._add_language_filter()
+        qs = self._clone()._add_language_filter()
         if connections[self._db].features.update_can_self_select:
             super(TranslationQueryset, qs).delete()
         else:
@@ -671,7 +672,7 @@ class TranslationQueryset(QuerySet):
     delete_translations.alters_data = True
 
     def update(self, **kwargs):
-        qs = self.__clone()._add_language_filter()
+        qs = self._clone()._add_language_filter()
         shared, translated = qs._split_kwargs(**kwargs)
         count = 0
         if translated:
@@ -986,13 +987,13 @@ class TranslationAwareQueryset(QuerySet):
     def only(self, *fields):
         raise NotImplementedError()
 
-    def __clone(self, klass=None, setup=False, **kwargs):
+    def _clone(self, klass=None, setup=False, **kwargs):
         kwargs.update({
             '_language_code': self._language_code,
         })
         if django.VERSION < (1, 9):
             kwargs.update({'klass': klass, 'setup': setup})
-        return super(TranslationAwareQueryset, self).__clone(**kwargs)
+        return super(TranslationAwareQueryset, self)._clone(**kwargs)
 
     def _filter_extra(self, extra_filters):
         if extra_filters.children:
